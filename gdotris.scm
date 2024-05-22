@@ -1,8 +1,9 @@
-#!/usr/bin/env guile
+#!/usr/bin/env -S guile --listen=7777
 !#
 (use-modules (ice-9 match)
              (ncurses curses)
              (srfi srfi-9)
+             (srfi srfi-19)
              (srfi srfi-60))
 
 (define grid-width 10)
@@ -68,20 +69,22 @@
    #f
    0))
    
-(define (grid-cell-at-pos grid x y)
-  "return an integer from grid coordinates that can be converted to a braille char"
-    (list->integer
-     (list (array-ref grid x y)
-           (array-ref grid (+ x 1) y)
-           (array-ref grid (+ x 2) y)
-           (array-ref grid x (+ y 1))
-           (array-ref grid (+ x 1) (+ y 1))
-           (array-ref grid (+ x 2) (+ y 1))
-           (array-ref grid (+ x 3) y)
-           (array-ref grid (+ x 3) (+ y 1)))))
+(define braille-offset #x2800)
 
 ;; Offset of braille codepoints in unicode, ending at #x28FF
-(define braille-offset #x2800)
+(define (grid-cell-at-pos grid x y)
+  "return an integer from grid coordinates that can be converted to a braille char"
+  (list->integer
+   (list
+    (array-ref grid (+ y 3) (+ x 1))      
+    (array-ref grid (+ y 3) x)
+    (array-ref grid (+ y 2) (+ x 1))
+    (array-ref grid (+ y 1) (+ x 1))
+    (array-ref grid y (+ x 1))
+    (array-ref grid (+ y 2) x)
+    (array-ref grid (+ y 1) x)
+    (array-ref grid y x))))
+
 (define (integer->braille i)
   "convert an integer to unicode braille character"
   (integer->char (+ braille-offset i)))
@@ -94,7 +97,6 @@
     (noecho!)      ; don't echo characters entered
     ;; (halfdelay! 1) ; wait 1/10th of a second on getch
     (curs-set 0))  ; hide the cursor
-
 
 (define (grid-pos->screen-pos x y)
   (cons
@@ -113,21 +115,22 @@ starting at the position (x-off, y-off)."
            (addch
              stdscr
              (normal (integer->braille
-                      (grid-cell-at-pos grid i j)))
+                      (grid-cell-at-pos grid j i)))
              #:x (+ x x-off)
-             #:y (+ y y-off)))))
-  (refresh stdscr))
+             #:y (+ y y-off))))))
                             
 (define (game-state-draw state)
-  (grid-draw (game-state-grid state) 0 0))
-  
-
-;; (define (draw-game-state game-state origin)
-;;   )
+  (let ((grid (game-state-grid state)))
+    (grid-draw grid 0 0)
+    (refresh stdscr)))
 
 (define game (new-game-state))
+(define grid (game-state-grid game)) ; testing only
 
 (setup)
-(game-state-draw game)
-(getch stdscr)
+(let loop ()
+  (begin
+    (game-state-draw game)
+    (getch stdscr)
+    (loop)))
 (endwin)
