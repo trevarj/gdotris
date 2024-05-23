@@ -103,7 +103,7 @@
     (setlocale LC_ALL "")
     (raw!)         ; no line buffering
     (noecho!)      ; don't echo characters entered
-    ;; (halfdelay! 1) ; wait 1/10th of a second on getch
+    (halfdelay! 1) ; wait 1/10th of a second on getch
     (curs-set 0))  ; hide the cursor
 
 (define (grid-pos->screen-pos x y)
@@ -156,11 +156,31 @@ starting at the position (x-off, y-off)."
 
 (define game (new-game-state))
 (define grid (game-state-grid game)) ; testing only
+(define tetr-i (new-tetromino 'I)) ; testing only
+(set-tetromino-position! tetr-i '(4 4)) ; testing only
+
+(define (time->milliseconds time)
+  "converts time object to milliseconds"
+  (+
+   (quotient (time-nanosecond time) 1000000)
+   (* 1000 (time-second time))))
+
+(define (milliseconds->time-duration ms)
+  "returns a time-duration from given milliseconds"
+  (let* ((total-nanos (* ms 1000000))
+         (seconds (truncate-quotient total-nanos 1000000000))
+         (nanos (truncate-remainder total-nanos 1000000000)))
+    (make-time time-duration nanos seconds)))
 
 (setup)
-(let loop ()
+(let loop ((now (current-time))
+           (last-now (make-time time-utc 0 0))
+           (tick-freq 1000))
   (begin
-    (game-state-draw game)
+    (when (<= tick-freq
+              (time->milliseconds (time-difference now last-now)))
+      (game-state-draw game)
+      (set! last-now now))
     (getch stdscr)
-    (loop)))
+    (loop (current-time) last-now tick-freq)))
 (endwin)
