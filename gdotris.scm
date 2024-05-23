@@ -34,6 +34,14 @@
 (define (new-tetromino type)
   (make-tetromino type '(0 0) 0))
 
+(define (tetromino-translate t offset)
+  "return a new translated tetromino t by offset"
+  (match-let (((tx ty) (tetromino-position t))
+              ((dx dy) offset))
+   (make-tetromino (tetromino-type t)
+                   (list (+ tx dx) (+ ty dy))
+                   (tetromino-state t))))
+
 (define (tetromino-next-state tetr)
   (set-tetromino-state!
    tetr
@@ -47,7 +55,66 @@
             (assoc-ref tetr-states
                        (tetromino-type tetr))
             (tetromino-state tetr))))
-   (list->array 1 (integer->list t 16)))) 
+    (list->array 1 (integer->list t 16))))
+
+(define (tetromino-for-each-dot tetr expr)
+  "run expr on each iteration over a tetromino's layout,
+where expr takes (x y val). when expr evaluates to #f it
+is like an escape hatch to the iteration. when the loop completes
+it returns #t."
+  (match-let (((tx ty) (tetromino-position tetr))
+              (tvec (tetromino->array tetr)))
+    (let loop ((i 0))
+      (if (< i 16)
+          (let* ((dx (truncate-remainder i 4))
+                 (dy (truncate-quotient i 4))
+                 (x (+ tx dx))
+                 (y (+ ty dy))
+                 (res (expr x y (array-ref tvec i))))
+            (if (not res)
+                res
+                (loop (1+ i))))
+          #t))))
+
+(define (tetromino-overlay grid tetr op)
+  "helper to merge/unmerge a tetromino into a grid"
+  (tetromino-for-each-dot
+   tetr
+   (lambda (x y val)
+     (when (and (>= x 0) (>= y 0)
+                (< x grid-width) (< y grid-height))
+      (array-set! grid
+                  (op val
+                      (array-ref grid y x))
+                  y x)))))
+
+(define (tetromino-valid-placement? tetr grid)
+  "checks if a tetromino can be written to the grid"
+  (tetromino-for-each-dot
+   tetr
+   (lambda (x y val)
+     (not (and val
+               (or (< x 0) (< y 0)
+                   (>= x grid-width) (>= y grid-height)
+                   (array-ref grid y x)))))))
+
+(define (direction->point dir)
+  (match dir
+    ('left
+     (list -1 0))
+    ('right
+     (list 1 0))
+    ('down
+     (list 0 1))))
+
+(define (game-try-move state dir)
+  (let* ((grid (game-state-grid state))
+         (new-tetr (tetromino-translate
+                    (game-state-current-tetr state)
+                    (direction->point dir)))
+         (valid (tetromino-valid-placement? new-tetr grid)))
+    (when valid
+      (set-game-state-current-tetr! game new-tetr))))
 
 (define-record-type <game-state>
   (make-game-state
@@ -111,23 +178,6 @@
    (quotient x cell-width)
    (quotient y cell-height)))
 
-(define (tetromino-overlay grid tetr op)
-  "helper to merge/unmerge a tetromino into a grid"
-  (match-let (((tx ty) (tetromino-position tetr))
-              (tvec (tetromino->array tetr)))
-    (do ((i 0 (1+ i)))
-        ((= i 16))
-      (let* ((dx (truncate-remainder i 4))
-             (dy (truncate-quotient i 4))
-             (x (+ tx dx))
-             (y (+ ty dy)))
-        (when (and (>= x 0) (>= y 0)
-                   (< x grid-width) (< y grid-height))
-          (array-set! grid
-                      (op (array-ref tvec i)
-                          (array-ref grid y x))
-                      y x))))))
-
 (define (grid-write-tetrmomino grid tetr)
   (tetromino-overlay grid tetr (lambda (a b) (or a b))))
 (define (grid-remove-tetrmomino grid tetr)
@@ -136,7 +186,6 @@
 (define (grid-draw grid x-off y-off)
   "iterate over a 4x2 frame/window (cell) of the grid and display as braille characters
 starting at the position (x-off, y-off)."
-  ;; FIXME: i wish this could be recursive or use some nicer helper function
   (do ((i 0 (+ 4 i)))
       ((>= i grid-height))
       (do ((j 0 (+ 2 j)))
@@ -150,8 +199,11 @@ starting at the position (x-off, y-off)."
              #:y (+ y y-off))))))
                             
 (define (game-state-draw state)
-  (let ((grid (game-state-grid state)))
+  (let ((grid (game-state-grid state))
+        (tetr (game-state-current-tetr state)))
+    (grid-write-tetrmomino grid tetr)
     (grid-draw grid 0 0)
+    (grid-remove-tetrmomino grid tetr)
     (refresh stdscr)))
 
 (define game (new-game-state))
