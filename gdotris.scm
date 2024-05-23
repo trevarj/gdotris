@@ -216,7 +216,7 @@ starting at the position (x-off, y-off)."
                     rotate))
          (valid (tetromino-valid-placement? new-tetr grid)))
     (when valid
-      (set-game-state-current-tetr! game new-tetr))
+      (set-game-state-current-tetr! state new-tetr))
     valid))
 
 (define (game-lock-piece! state)
@@ -233,8 +233,6 @@ starting at the position (x-off, y-off)."
    (new-tetromino (game-state-next-tetr-type state)))
   (set-game-state-next-tetr-type! state (random-tetromino-type)))
 
-(define game (new-game-state))
-
 (define (time->milliseconds time)
   "converts time object to milliseconds"
   (+
@@ -248,8 +246,14 @@ starting at the position (x-off, y-off)."
          (nanos (truncate-remainder total-nanos 1000000000)))
     (make-time time-duration nanos seconds)))
 
+(define (end-game state)
+  ;; TODO: print score and stuff
+  (endwin)
+  (exit 0))
+
 (setup)
-(let loop ((now (current-time))
+(let loop ((game (new-game-state))
+           (now (current-time))
            (last-now (make-time time-utc 0 0))
            (tick-freq 1000))
   (begin
@@ -259,7 +263,7 @@ starting at the position (x-off, y-off)."
       (set! last-now now))
    
     (match (getch stdscr)
-      (#\q (endwin) (exit 0))
+      (#\q (end-game))
       (259 ; KEY_UP 
        (game-try-move! game 'none #t))
       (258 ; KEY_DOWN
@@ -270,7 +274,8 @@ starting at the position (x-off, y-off)."
        (game-drop-tetr! game))
       (261 ; KEY_RIGHT
        (game-try-move! game 'right))
+      (265 ; F1
+       (set! game (new-game-state)))
       (_ #f))
     (game-state-draw game)
-    (loop (current-time) last-now tick-freq)))
-(endwin)
+    (loop game (current-time) last-now tick-freq)))
