@@ -18,14 +18,14 @@
 (define tetr-states
          '((I . (#x2222 #x0F00 #x2222 #x0F00))
            (J . (#x0071 #x0113 #x0047 #x0644))
-           (L . (#x00E1 #x0C44 #x002E #x0446))
+           (L . (#x00E8 #x0C44 #x002E #x0446))
            (O . (#x0660 #x0660 #x0660 #x0660))
            (S . (#x0036 #x0462 #x0036 #x0462))
            (T . (#x0072 #x0262 #x0270 #x0232))
            (Z . (#x00C6 #x0264 #x00C6 #x0264))))
 
 (define (random-tetromino-type)
-  (car (list-ref tetr-states (random (length tetr-states)))))
+  (car (list-ref tetr-states (random (1- (length tetr-states))))))
 
 (define-record-type <tetromino>
   (make-tetromino type position state)
@@ -37,19 +37,23 @@
 (define (new-tetromino type)
   (make-tetromino type '(0 0) 0))
 
-(define (tetromino-translate t offset)
+(define (tetromino-translate t offset rotate)
   "return a new translated tetromino t by offset"
-  (match-let (((tx ty) (tetromino-position t))
-              ((dx dy) offset))
-   (make-tetromino (tetromino-type t)
-                   (list (+ tx dx) (+ ty dy))
-                   (tetromino-state t))))
+  (match-let* (((tx ty) (tetromino-position t))
+               ((dx dy) offset)
+               (new-tetr (make-tetromino (tetromino-type t)
+                                         (list (+ tx dx) (+ ty dy))
+                                         (tetromino-state t))))
+    (begin
+      (when rotate
+            (tetromino-next-state new-tetr))
+      new-tetr)))
 
 (define (tetromino-next-state tetr)
   (set-tetromino-state!
    tetr
    (match (tetromino-state tetr)
-     ((4) 0)
+     (3 0)
      (current (+ current 1)))))
 
 (define (tetromino->array tetr)
@@ -108,16 +112,9 @@ it returns #t."
     ('right
      (list 1 0))
     ('down
-     (list 0 1))))
-
-(define (game-try-move state dir)
-  (let* ((grid (game-state-grid state))
-         (new-tetr (tetromino-translate
-                    (game-state-current-tetr state)
-                    (direction->point dir)))
-         (valid (tetromino-valid-placement? new-tetr grid)))
-    (when valid
-      (set-game-state-current-tetr! game new-tetr))))
+     (list 0 1))
+    ('none
+     (list 0 0))))
 
 (define-record-type <game-state>
   (make-game-state
@@ -170,20 +167,22 @@ it returns #t."
 (define stdscr (initscr))
 (define (setup)
   "initialize the ncurses screen and other game settings."
-    (setlocale LC_ALL "")
-    (raw!)         ; no line buffering
-    (noecho!)      ; don't echo characters entered
-    (halfdelay! 1) ; wait 1/10th of a second on getch
-    (curs-set 0))  ; hide the cursor
+  (set! *random-state* (random-state-from-platform))
+  (setlocale LC_ALL "")
+  (raw!)         ; no line buffering
+  (noecho!)      ; don't echo characters entered
+  (halfdelay! 1) ; wait 1/10th of a second on getch
+  (keypad! stdscr #t)
+  (curs-set 0))  ; hide the cursor
 
 (define (grid-pos->screen-pos x y)
   (cons
    (quotient x cell-width)
    (quotient y cell-height)))
 
-(define (grid-write-tetrmomino grid tetr)
+(define (grid-write-tetrmomino! grid tetr)
   (tetromino-overlay grid tetr (lambda (a b) (or a b))))
-(define (grid-remove-tetrmomino grid tetr)
+(define (grid-remove-tetrmomino! grid tetr)
   (tetromino-overlay grid tetr (lambda (a b) (not (eq? a b)))))
 
 (define (grid-draw grid x-off y-off)
@@ -204,15 +203,37 @@ starting at the position (x-off, y-off)."
 (define (game-state-draw state)
   (let ((grid (game-state-grid state))
         (tetr (game-state-current-tetr state)))
-    (grid-write-tetrmomino grid tetr)
+    (grid-write-tetrmomino! grid tetr)
     (grid-draw grid 0 0)
-    (grid-remove-tetrmomino grid tetr)
+    (grid-remove-tetrmomino! grid tetr)
     (refresh stdscr)))
 
+(define* (game-try-move! state dir #:optional rotate)
+  (let* ((grid (game-state-grid state))
+         (new-tetr (tetromino-translate
+                    (game-state-current-tetr state)
+                    (direction->point dir)
+                    rotate))
+         (valid (tetromino-valid-placement? new-tetr grid)))
+    (when valid
+      (set-game-state-current-tetr! game new-tetr))
+    valid))
+
+(define (game-lock-piece! state)
+  "writes the current piece to the grid"
+  (grid-write-tetrmomino!
+   (game-state-grid state)
+   (game-state-current-tetr state)))
+
+(define (game-drop-tetr! state)
+  "drop the piece and lock it in"
+  (while (game-try-move! state 'down))
+  (game-lock-piece! state)
+  (set-game-state-current-tetr! state
+   (new-tetromino (game-state-next-tetr-type state)))
+  (set-game-state-next-tetr-type! state (random-tetromino-type)))
+
 (define game (new-game-state))
-(define grid (game-state-grid game)) ; testing only
-(define tetr-i (new-tetromino 'I)) ; testing only
-(set-tetromino-position! tetr-i '(4 4)) ; testing only
 
 (define (time->milliseconds time)
   "converts time object to milliseconds"
@@ -234,8 +255,22 @@ starting at the position (x-off, y-off)."
   (begin
     (when (<= tick-freq
               (time->milliseconds (time-difference now last-now)))
-      (game-state-draw game)
+      (game-try-move! game 'down)
       (set! last-now now))
-    (getch stdscr)
+   
+    (match (getch stdscr)
+      (#\q (endwin) (exit 0))
+      (259 ; KEY_UP 
+       (game-try-move! game 'none #t))
+      (258 ; KEY_DOWN
+       (game-try-move! game 'down))
+      (260 ; KEY_LEFT
+       (game-try-move! game 'left))
+      (#\space
+       (game-drop-tetr! game))
+      (261 ; KEY_RIGHT
+       (game-try-move! game 'right))
+      (_ #f))
+    (game-state-draw game)
     (loop (current-time) last-now tick-freq)))
 (endwin)
