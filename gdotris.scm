@@ -24,6 +24,9 @@
            (T . (#x0072 #x0262 #x0270 #x0232))
            (Z . (#x00C6 #x0264 #x00C6 #x0264))))
 
+(define (random-tetromino-type)
+  (car (list-ref tetr-states (random (length tetr-states)))))
+
 (define-record-type <tetromino>
   (make-tetromino type position state)
   tetromino?
@@ -139,8 +142,8 @@ it returns #t."
 (define (new-game-state)
   (make-game-state
    (make-typed-array 'b #f grid-height grid-width)
-   (new-tetromino 'T) ; TODO: randomize
-   'L                 ; TODO: randomize
+   (new-tetromino (random-tetromino-type))
+   (random-tetromino-type)
    #f
    0))
    
