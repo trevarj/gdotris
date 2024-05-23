@@ -150,15 +150,14 @@ it returns #t."
 (define (grid-cell-at-pos grid x y)
   "return an integer from grid coordinates that can be converted to a braille char"
   (list->integer
-   (list
-    (array-ref grid (+ y 3) (+ x 1))      
-    (array-ref grid (+ y 3) x)
-    (array-ref grid (+ y 2) (+ x 1))
-    (array-ref grid (+ y 1) (+ x 1))
-    (array-ref grid y (+ x 1))
-    (array-ref grid (+ y 2) x)
-    (array-ref grid (+ y 1) x)
-    (array-ref grid y x))))
+   (let* ((x1 (1+ x))
+          (x2 (1+ x1))
+          (y1 (1+ y))
+          (y2 (1+ y1))
+          (y3 (1+ y2)))
+    (map (lambda (y x) (array-ref grid y x))
+         `(,y3 ,y3 ,y2 ,y1 ,y ,y2 ,y1 ,y)
+         `(,x1 ,x ,x1 ,x1 ,x1 ,x ,x ,x)))))
 
 (define (integer->braille i)
   "convert an integer to unicode braille character"
@@ -172,7 +171,7 @@ it returns #t."
   (raw!)         ; no line buffering
   (noecho!)      ; don't echo characters entered
   (halfdelay! 1) ; wait 1/10th of a second on getch
-  (keypad! stdscr #t)
+  (keypad! stdscr #t) ; function keys
   (curs-set 0))  ; hide the cursor
 
 (define (grid-pos->screen-pos x y)
@@ -263,7 +262,7 @@ starting at the position (x-off, y-off)."
       (set! last-now now))
    
     (match (getch stdscr)
-      (#\q (end-game))
+      (#\q (end-game game))
       (259 ; KEY_UP 
        (game-try-move! game 'none #t))
       (258 ; KEY_DOWN
