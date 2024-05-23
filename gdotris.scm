@@ -16,30 +16,38 @@
 ;; is a row and 1-bit means the cell is filled by the piece. This could just be
 ;; arrays of arrays, but I want to keep the code size small.
 (define tetr-states
-         '(('I . '(#x2222 #x0F00 #x2222 #x0F00))
-           ('J . '(#x0071 #x0113 #x0047 #x0644))
-           ('L . '(#x00E1 #x0C44 #x002E #x0446))
-           ('O . '(#x0660 #x0660 #x0660 #x0660))
-           ('S . '(#x0036 #x0462 #x0036 #x0462))
-           ('T . '(#x0072 #x0262 #x0270 #x0232))
-           ('Z . '(#x00C6 #x0264 #x00C6 #x0264))))
+         '((I . (#x2222 #x0F00 #x2222 #x0F00))
+           (J . (#x0071 #x0113 #x0047 #x0644))
+           (L . (#x00E1 #x0C44 #x002E #x0446))
+           (O . (#x0660 #x0660 #x0660 #x0660))
+           (S . (#x0036 #x0462 #x0036 #x0462))
+           (T . (#x0072 #x0262 #x0270 #x0232))
+           (Z . (#x00C6 #x0264 #x00C6 #x0264))))
 
-(define-record-type <tetrimino>
+(define-record-type <tetromino>
   (make-tetromino type position state)
-  tetrimino?
-  (type tetrimino-type set-tetromino-type)
-  (position tetromino-position set-tetromino-position)
-  (state tetromino-state set-tetromino-state))
+  tetromino?
+  (type tetromino-type set-tetromino-type!)
+  (position tetromino-position set-tetromino-position!)
+  (state tetromino-state set-tetromino-state!))
 
 (define (new-tetromino type)
   (make-tetromino type '(0 0) 0))
 
 (define (tetromino-next-state tetr)
-  (set-tetromino-state
+  (set-tetromino-state!
    tetr
    (match (tetromino-state tetr)
      ((4) 0)
      (current (+ current 1)))))
+
+(define (tetromino->array tetr)
+  "convert tetromino to bitvector form for drawing"
+  (let ((t (list-ref
+            (assoc-ref tetr-states
+                       (tetromino-type tetr))
+            (tetromino-state tetr))))
+   (list->array 1 (integer->list t 16)))) 
 
 (define-record-type <game-state>
   (make-game-state
@@ -102,7 +110,29 @@
   (cons
    (quotient x cell-width)
    (quotient y cell-height)))
-  
+
+(define (tetromino-overlay grid tetr op)
+  "helper to merge/unmerge a tetromino into a grid"
+  (match-let (((tx ty) (tetromino-position tetr))
+              (tvec (tetromino->array tetr)))
+    (do ((i 0 (1+ i)))
+        ((= i 16))
+      (let* ((dx (truncate-remainder i 4))
+             (dy (truncate-quotient i 4))
+             (x (+ tx dx))
+             (y (+ ty dy)))
+        (when (and (>= x 0) (>= y 0)
+                   (< x grid-width) (< y grid-height))
+          (array-set! grid
+                      (op (array-ref tvec i)
+                          (array-ref grid y x))
+                      y x))))))
+
+(define (grid-write-tetrmomino grid tetr)
+  (tetromino-overlay grid tetr (lambda (a b) (or a b))))
+(define (grid-remove-tetrmomino grid tetr)
+  (tetromino-overlay grid tetr (lambda (a b) (not (eq? a b)))))
+
 (define (grid-draw grid x-off y-off)
   "iterate over a 4x2 frame/window (cell) of the grid and display as braille characters
 starting at the position (x-off, y-off)."
