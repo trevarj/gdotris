@@ -1,4 +1,4 @@
-#!/usr/bin/env -S guile --listen=7777
+#!/usr/bin/env -S guile --listen=7777 -e main -s
 !#
 (use-modules (ice-9 match)
              (ncurses curses)
@@ -184,12 +184,11 @@ it returns #t."
   (cons
    (quotient x cell-width)
    (quotient y cell-height)))
-
 (define (grid-write-tetrmomino! grid tetr)
   (tetromino-overlay grid tetr (lambda (a b) (or a b))))
 (define (grid-remove-tetrmomino! grid tetr)
   (tetromino-overlay grid tetr (lambda (a b) (not (eq? a b)))))
-
+;; (define (grid-clear-lines grid))
 (define (grid-draw grid x-off y-off)
   "iterate over a 4x2 frame/window (cell) of the grid and display as braille characters
 starting at the position (x-off, y-off)."
@@ -256,38 +255,39 @@ starting at the position (x-off, y-off)."
   (endwin)
   (exit 0))
 
-(setup)
-(let loop ((game (new-game-state))
-           (now (current-time))
-           (last-now (make-time time-utc 0 0))
-           (tick-freq 1000))
-  (begin
-    (when (<= tick-freq
-              (time->milliseconds (time-difference now last-now)))
-      (let ((moved (game-try-move! game 'down)))
-        (cond
-         ;; tetromino hit floor and is stuck at the top
-         ((and (not moved)
-               (<= 0 (tetromino-y (game-state-current-tetr game))))
-          (end-game game))
-         ;; tetromino hit the floor
-         ((not moved) (game-lock-tetr! game))))
-      (set! last-now now))
+(define (main args)
+ ((setup)
+  (let loop ((game (new-game-state))
+             (now (current-time))
+             (last-now (make-time time-utc 0 0))
+             (tick-freq 1000))
+    (begin
+      (when (<= tick-freq
+                (time->milliseconds (time-difference now last-now)))
+        (let ((moved (game-try-move! game 'down)))
+          (cond
+           ;; tetromino hit floor and is stuck at the top
+           ((and (not moved)
+                 (<= 0 (tetromino-y (game-state-current-tetr game))))
+            (end-game game))
+           ;; tetromino hit the floor
+           ((not moved) (game-lock-tetr! game))))
+        (set! last-now now))
 
-    (match (getch stdscr)
-      (#\q (end-game game))
-      (259 ; KEY_UP 
-       (game-try-move! game 'none #t))
-      (258 ; KEY_DOWN
-       (game-try-move! game 'down))
-      (260 ; KEY_LEFT
-       (game-try-move! game 'left))
-      (#\space
-       (game-drop-tetr! game))
-      (261 ; KEY_RIGHT
-       (game-try-move! game 'right))
-      (265 ; F1
-       (set! game (new-game-state)))
-      (_ #f))
-    (game-state-draw game)
-    (loop game (current-time) last-now tick-freq)))
+      (match (getch stdscr)
+        (#\q (end-game game))
+        (259 ; KEY_UP 
+         (game-try-move! game 'none #t))
+        (258 ; KEY_DOWN
+         (game-try-move! game 'down))
+        (260 ; KEY_LEFT
+         (game-try-move! game 'left))
+        (#\space
+         (game-drop-tetr! game))
+        (261 ; KEY_RIGHT
+         (game-try-move! game 'right))
+        (265 ; F1
+         (set! game (new-game-state)))
+        (_ #f))
+      (game-state-draw game)
+      (loop game (current-time) last-now tick-freq)))))
