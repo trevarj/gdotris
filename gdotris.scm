@@ -8,21 +8,25 @@
 
 (define grid-width 10)
 (define grid-height 20)
+(define grid-x 1)
+(define grid-y 1)
+(define grid-x-end (+ grid-x grid-width))
+(define grid-y-end (+ grid-y grid-height))
 (define cell-width 2)
 (define cell-height 4)
 
-;; The states of tetrominoes are represented as 16-bit hex numbers. You can 
-;; imagine each number's binary representation as a 4x4 grid, where each digit
-;; is a row and 1-bit means the cell is filled by the piece. This could just be
-;; arrays of arrays, but I want to keep the code size small.
 (define tetr-states
-         '((I . (#x2222 #x0F00 #x2222 #x0F00))
-           (J . (#x0071 #x0113 #x0047 #x0644))
-           (L . (#x00E8 #x0C44 #x002E #x0446))
-           (O . (#x0660 #x0660 #x0660 #x0660))
-           (S . (#x0036 #x0462 #x0036 #x0462))
-           (T . (#x0072 #x0262 #x0270 #x0232))
-           (Z . (#x00C6 #x0264 #x00C6 #x0264))))
+  "tetromino states for each type, where each state is represented
+as a list of integers that will be converted into a 4x4 grid.
+if you write the numbers as 4-bit binary numbers, you can see that they
+draw the tetromino shape."
+  '((I . ((2 2 2 2) (0 15 0 0) (2 2 2 2) (0 15 0 0)))
+    (J . ((0 0 7 1) (0 1 1 3) (0 0 4 7) (0 6 4 4)))
+    (L . ((0 0 14 8) (0 12 4 4) (0 0 2 14) (0 4 4 6)))
+    (O . ((0 6 6 0) (0 6 6 0) (0 6 6 0) (0 6 6 0)))
+    (S . ((0 0 3 6) (0 4 6 2) (0 0 3 6) (0 4 6 2)))
+    (T . ((0 0 7 2) (0 2 6 2) (0 2 7 0) (0 2 3 2)))
+    (Z . ((0 0 12 6) (0 2 6 4) (0 0 12 6) (0 2 6 4)))))
 
 (define (random-tetromino-type)
   (car (list-ref tetr-states (random (1- (length tetr-states))))))
@@ -41,9 +45,10 @@
   "return a new translated tetromino t by offset"
   (match-let* (((tx ty) (tetromino-position t))
                ((dx dy) offset)
-               (new-tetr (make-tetromino (tetromino-type t)
-                                         (list (+ tx dx) (+ ty dy))
-                                         (tetromino-state t))))
+               (new-tetr
+                (make-tetromino (tetromino-type t)
+                                (list (+ tx dx) (+ ty dy))
+                                (tetromino-state t))))
     (begin
       (when rotate
             (tetromino-next-state new-tetr))
@@ -58,11 +63,11 @@
 
 (define (tetromino->array tetr)
   "convert tetromino to bitvector form for drawing"
-  (let ((t (list-ref
+  (let ((p (list-ref
             (assoc-ref tetr-states
                        (tetromino-type tetr))
             (tetromino-state tetr))))
-    (list->array 1 (integer->list t 16))))
+    (list->array 2 (map (lambda (a) (integer->list a 4)) p))))
 
 (define (tetromino-for-each-dot tetr expr)
   "run expr on each iteration over a tetromino's layout,
@@ -71,17 +76,18 @@ is like an escape hatch to the iteration. when the loop completes
 it returns #t."
   (match-let (((tx ty) (tetromino-position tetr))
               (tvec (tetromino->array tetr)))
-    (let loop ((i 0))
-      (if (< i 16)
-          (let* ((dx (truncate-remainder i 4))
-                 (dy (truncate-quotient i 4))
-                 (x (+ tx dx))
-                 (y (+ ty dy))
-                 (res (expr x y (array-ref tvec i))))
-            (if (not res)
-                res
-                (loop (1+ i))))
-          #t))))
+    (let loop ((i 0)
+               (j 0))
+      (cond
+       ((eq? i 4) #t) 
+       ((< j 4)
+        (let* ((x (+ tx j))
+               (y (+ ty i))
+               (res (expr x y (array-ref tvec i j))))
+          (if (not res)
+              res
+              (loop i (1+ j)))))
+       (else (loop (1+ i) 0))))))
 
 (define (tetromino-overlay grid tetr op)
   "helper to merge/unmerge a tetromino into a grid"
@@ -91,8 +97,7 @@ it returns #t."
      (when (and (>= x 0) (>= y 0)
                 (< x grid-width) (< y grid-height))
       (array-set! grid
-                  (op val
-                      (array-ref grid y x))
+                  (op val (array-ref grid y x))
                   y x)))))
 
 (define (tetromino-valid-placement? tetr grid)
@@ -169,17 +174,6 @@ it returns #t."
   "convert an integer to unicode braille character"
   (integer->char (+ braille-offset i)))
 
-(define stdscr (initscr))
-(define (setup)
-  "initialize the ncurses screen and other game settings."
-  (set! *random-state* (random-state-from-platform))
-  (setlocale LC_ALL "")
-  (raw!)         ; no line buffering
-  (noecho!)      ; don't echo characters entered
-  (halfdelay! 1) ; wait 1/10th of a second on getch
-  (keypad! stdscr #t) ; function keys
-  (curs-set 0))  ; hide the cursor
-
 (define (grid-pos->screen-pos x y)
   (cons
    (quotient x cell-width)
@@ -190,6 +184,8 @@ it returns #t."
   (tetromino-overlay grid tetr (lambda (a b) (not (eq? a b)))))
 
 (define (grid-clear-lines grid)
+  "iterate over grid rows backwards and check if they are filled. if filled,
+shift the previous rows down."
   (define (row-filled? row)
     (eq? 1023 ((compose list->integer array->list) (array-cell-ref grid row))))
   (let loop ((cleared 0)
@@ -211,26 +207,27 @@ it returns #t."
      (loop (1+ cleared) (1- row)))
     (else cleared))))
         
-(define (grid-draw grid x-off y-off)
-  "iterate over a 4x2 frame/window (cell) of the grid and display as braille characters
+(define (draw-array array x-off y-off)
+  "iterate over a 4x2 frame/window (cell) of the array and display as braille characters
 starting at the position (x-off, y-off)."
-  (do ((i 0 (+ 4 i)))
-      ((>= i grid-height))
-      (do ((j 0 (+ 2 j)))
-          ((>= j grid-width))
-          (match-let (((x . y) (grid-pos->screen-pos j i)))
-           (addch
-             stdscr
-             (normal (integer->braille
-                      (grid-cell-at-pos grid j i)))
-             #:x (+ x x-off)
-             #:y (+ y y-off))))))
+  (match-let (((dy dx) (array-dimensions array)))
+    (do ((i 0 (+ 4 i)))
+        ((>= i dy))
+        (do ((j 0 (+ 2 j)))
+            ((>= j dx))
+            (match-let (((x . y) (grid-pos->screen-pos j i)))
+             (addch
+               stdscr
+               (normal (integer->braille
+                        (grid-cell-at-pos array j i)))
+               #:x (+ x x-off)
+               #:y (+ y y-off)))))))
                             
 (define (game-state-draw state)
   (let ((grid (game-state-grid state))
         (tetr (game-state-current-tetr state)))
     (grid-write-tetrmomino! grid tetr)
-    (grid-draw grid 0 0)
+    (draw-array grid grid-x grid-y)
     (grid-remove-tetrmomino! grid tetr)
     (refresh stdscr)))
 
@@ -245,19 +242,39 @@ starting at the position (x-off, y-off)."
       (set-game-state-current-tetr! state new-tetr))
     valid))
 
+(define (game-new-tetr! state)
+  (set-game-state-current-tetr! state
+   (new-tetromino (game-state-next-tetr-type state)))
+  (set-game-state-next-tetr-type! state (random-tetromino-type)))
+
 (define (game-lock-tetr! state)
   "writes the current piece to the grid"
   (grid-write-tetrmomino!
    (game-state-grid state)
    (game-state-current-tetr state))
-  (set-game-state-current-tetr! state
-   (new-tetromino (game-state-next-tetr-type state)))
-  (set-game-state-next-tetr-type! state (random-tetromino-type)))
+  (game-new-tetr! state))
 
 (define (game-drop-tetr! state)
   "drop the piece and lock it in"
   (while (game-try-move! state 'down))
   (game-lock-tetr! state))
+
+(define (game-hold-or-recall-tetr! state)
+  (let ((held (game-state-held-tetr-type state)))
+    (cond
+     (held
+      (game-recall-tetr! state))
+     (else
+      (set-game-state-held-tetr-type!
+       state
+       (tetromino-type (game-state-current-tetr state)))
+      (game-new-tetr! state)))))
+
+(define (game-recall-tetr! state)
+  (set-game-state-current-tetr!
+   state
+   (new-tetromino (game-state-held-tetr-type state)))
+  (set-game-state-held-tetr-type! state #f))
   
 (define (time->milliseconds time)
   "converts time object to milliseconds"
@@ -275,46 +292,67 @@ starting at the position (x-off, y-off)."
 (define (end-game state)
   ;; TODO: print score and stuff
   (endwin)
-  (pk state)
   (exit 0))
 
+(define stdscr (initscr))
+(define (setup)
+  "initialize the ncurses screen and other game settings."
+  (set! *random-state* (random-state-from-platform))
+  (setlocale LC_ALL "")
+  (raw!)         ; no line buffering
+  (noecho!)      ; don't echo characters entered
+  (halfdelay! 1) ; wait 1/10th of a second on getch
+  (keypad! stdscr #t) ; function keys
+  (curs-set 0))  ; hide the cursor
+
+(define (draw-border)
+  (addstr stdscr "┌─────┐" #:x 0 #:y 0)
+  (let loop ((i 1))
+    (when (<= i 5)
+      (addstr stdscr "│     │" #:x 0 #:y i)
+      (loop (1+ i))))
+  (addstr stdscr "└─────┘" #:x 0 #:y 6))
+
 (define (main args)
- ((setup)
-  (let loop ((game (new-game-state))
-             (now (current-time))
-             (last-now (make-time time-utc 0 0))
-             (tick-freq 1000))
-    (begin
-      (when (<= tick-freq
-                (time->milliseconds (time-difference now last-now)))
-        (let ((moved (game-try-move! game 'down)))
-          (cond
-           ;; tetromino hit floor and is stuck at the top
-           ((and (not moved)
-                 (<= (tetromino-y (game-state-current-tetr game)) 0))
-            (end-game game))
-           ;; tetromino hit the floor
-           ((not moved) (game-lock-tetr! game))))
-        (set! last-now now))
+  ((setup)
+   (draw-border)
+   (let loop ((game (new-game-state))
+              (now (current-time))
+              (last-now (make-time time-utc 0 0))
+              (tick-freq 1000))
+     (begin
+       (when (<= tick-freq
+                 (time->milliseconds (time-difference now last-now)))
+         (let ((moved (game-try-move! game 'down)))
+           (cond
+            ;; tetromino hit floor and is stuck at the top
+            ((and (not moved)
+                  (<= (tetromino-y (game-state-current-tetr game)) 0))
+             (end-game game))
+            ;; tetromino hit the floor
+            ((not moved) (game-lock-tetr! game))))
+         (set! last-now now))
 
-      (match (getch stdscr)
-        (#\q (end-game game))
-        (259 ; KEY_UP 
-         (game-try-move! game 'none #t))
-        (258 ; KEY_DOWN
-         (game-try-move! game 'down))
-        (260 ; KEY_LEFT
-         (game-try-move! game 'left))
-        (#\space
-         (game-drop-tetr! game))
-        (261 ; KEY_RIGHT
-         (game-try-move! game 'right))
-        (265 ; F1
-         (set! game (new-game-state)))
-        (_ #f))
+       (match (getch stdscr)
+         (#\q (end-game game))
+         (#\space
+          (game-drop-tetr! game))
+         (#\c
+          (game-hold-or-recall-tetr! game))
+         ((or 259 #\w) ; KEY_UP or w
+          (game-try-move! game 'none #t))
+         ((or 258 #\s) ; KEY_DOWN or s
+          (game-try-move! game 'down))
+         ((or 260 #\a) ; KEY_LEFT or a
+          (game-try-move! game 'left))
+         ((or 261 #\d) ; KEY_RIGHT or d
+          (game-try-move! game 'right))
+         ((or 265 #\r) ; F1 or r
+          (set! game (new-game-state)))
+         (_ #f))
 
-      ;; TODO: calculate score from cleared lines
-      (grid-clear-lines (game-state-grid game))
+       ;; TODO: calculate score from cleared lines
+       (grid-clear-lines (game-state-grid game))
       
-      (game-state-draw game)
-      (loop game (current-time) last-now tick-freq)))))
+       (game-state-draw game)
+       (loop game (current-time) last-now tick-freq)))))
