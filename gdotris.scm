@@ -188,7 +188,29 @@ it returns #t."
   (tetromino-overlay grid tetr (lambda (a b) (or a b))))
 (define (grid-remove-tetrmomino! grid tetr)
   (tetromino-overlay grid tetr (lambda (a b) (not (eq? a b)))))
-;; (define (grid-clear-lines grid))
+
+(define (grid-clear-lines grid)
+  (define (row-filled? row)
+    (eq? 1023 ((compose list->integer array->list) (array-cell-ref grid row))))
+  (let loop ((cleared 0)
+             (row (1- grid-height)))
+   (cond
+    ((>= row 0)
+     (when (row-filled? row)
+      (let shift-rows ((start-row row))
+        (cond
+         ((> start-row 0)
+          (array-cell-set! grid
+                           (array-cell-ref grid (1- start-row))
+                           start-row)
+          (shift-rows (1- start-row)))
+         ;; clear out the first row
+         (else (array-cell-set! grid
+                           (make-array #f 10)
+                           start-row)))))
+     (loop (1+ cleared) (1- row)))
+    (else cleared))))
+        
 (define (grid-draw grid x-off y-off)
   "iterate over a 4x2 frame/window (cell) of the grid and display as braille characters
 starting at the position (x-off, y-off)."
@@ -253,6 +275,7 @@ starting at the position (x-off, y-off)."
 (define (end-game state)
   ;; TODO: print score and stuff
   (endwin)
+  (pk state)
   (exit 0))
 
 (define (main args)
@@ -268,7 +291,7 @@ starting at the position (x-off, y-off)."
           (cond
            ;; tetromino hit floor and is stuck at the top
            ((and (not moved)
-                 (<= 0 (tetromino-y (game-state-current-tetr game))))
+                 (<= (tetromino-y (game-state-current-tetr game)) 0))
             (end-game game))
            ;; tetromino hit the floor
            ((not moved) (game-lock-tetr! game))))
@@ -289,5 +312,9 @@ starting at the position (x-off, y-off)."
         (265 ; F1
          (set! game (new-game-state)))
         (_ #f))
+
+      ;; TODO: calculate score from cleared lines
+      (grid-clear-lines (game-state-grid game))
+      
       (game-state-draw game)
       (loop game (current-time) last-now tick-freq)))))
