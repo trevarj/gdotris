@@ -218,20 +218,26 @@ starting at the position (x-off, y-off)."
       (set-game-state-current-tetr! state new-tetr))
     valid))
 
-(define (game-lock-piece! state)
+(define (game-lock-tetr! state)
   "writes the current piece to the grid"
   (grid-write-tetrmomino!
    (game-state-grid state)
-   (game-state-current-tetr state)))
-
-(define (game-drop-tetr! state)
-  "drop the piece and lock it in"
-  (while (game-try-move! state 'down))
-  (game-lock-piece! state)
+   (game-state-current-tetr state))
   (set-game-state-current-tetr! state
    (new-tetromino (game-state-next-tetr-type state)))
   (set-game-state-next-tetr-type! state (random-tetromino-type)))
 
+(define (game-drop-tetr! state)
+  "drop the piece and lock it in"
+  (while (game-try-move! state 'down))
+  (game-lock-tetr! state))
+  
+(define (game-over? state)
+  "returns true if the game is over"
+  (match-let (((_ ty) (tetromino-position
+                       (game-state-current-tetr state))))
+     (<= ty 0))) ; tetromino is too high
+    
 (define (time->milliseconds time)
   "converts time object to milliseconds"
   (+
@@ -258,9 +264,16 @@ starting at the position (x-off, y-off)."
   (begin
     (when (<= tick-freq
               (time->milliseconds (time-difference now last-now)))
-      (game-try-move! game 'down)
+      (let ((moved (game-try-move! game 'down)))
+        (cond
+         ;; tetromino hit floor and is stuck at the top
+         ((and (not moved)
+               (game-over? game))
+          (end-game game))
+         ;; tetromino hit the floor
+         ((not moved) (game-lock-tetr! game))))
       (set! last-now now))
-   
+
     (match (getch stdscr)
       (#\q (end-game game))
       (259 ; KEY_UP 
