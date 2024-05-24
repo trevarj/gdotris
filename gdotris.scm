@@ -105,6 +105,12 @@ it returns #t."
                    (>= x grid-width) (>= y grid-height)
                    (array-ref grid y x)))))))
 
+(define (tetromino-x t)
+  (car (tetromino-position t)))
+
+(define (tetromino-y t)
+  (cadr (tetromino-position t)))
+
 (define (direction->point dir)
   (match dir
     ('left
@@ -232,12 +238,6 @@ starting at the position (x-off, y-off)."
   (while (game-try-move! state 'down))
   (game-lock-tetr! state))
   
-(define (game-over? state)
-  "returns true if the game is over"
-  (match-let (((_ ty) (tetromino-position
-                       (game-state-current-tetr state))))
-     (<= ty 0))) ; tetromino is too high
-    
 (define (time->milliseconds time)
   "converts time object to milliseconds"
   (+
@@ -268,7 +268,7 @@ starting at the position (x-off, y-off)."
         (cond
          ;; tetromino hit floor and is stuck at the top
          ((and (not moved)
-               (game-over? game))
+               (<= 0 (tetromino-y (game-state-current-tetr game))))
           (end-game game))
          ;; tetromino hit the floor
          ((not moved) (game-lock-tetr! game))))
