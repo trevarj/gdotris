@@ -10,8 +10,6 @@
 (define grid-height 20)
 (define grid-x 1)
 (define grid-y 1)
-(define grid-x-end (+ grid-x grid-width))
-(define grid-y-end (+ grid-y grid-height))
 (define cell-width 2)
 (define cell-height 4)
 
@@ -21,12 +19,12 @@
 ;; draw the tetromino shape.
 (define tetr-states
   '((I . ((2 2 2 2) (0 15 0 0) (2 2 2 2) (0 15 0 0)))
-    (J . ((0 0 7 1) (0 1 1 3) (0 0 4 7) (0 6 4 4)))
-    (L . ((0 0 14 8) (0 12 4 4) (0 0 2 14) (0 4 4 6)))
-    (O . ((0 6 6 0) (0 6 6 0) (0 6 6 0) (0 6 6 0)))
-    (S . ((0 0 3 6) (0 4 6 2) (0 0 3 6) (0 4 6 2)))
-    (T . ((0 0 7 2) (0 2 6 2) (0 2 7 0) (0 2 3 2)))
-    (Z . ((0 0 12 6) (0 2 6 4) (0 0 12 6) (0 2 6 4)))))
+    (J . ((7 1 0 0) (1 1 3 0) (4 7 0 0) (6 4 4 0)))
+    (L . ((14 8 0 0) (12 4 4 0) (2 14 0 0) (4 4 6 0)))
+    (O . ((6 6 0 0) (6 6 0 0) (6 6 0 0) (6 6 0 0)))
+    (S . ((3 6 0 0) (4 6 2 0) (3 6 0 0) (4 6 2 0)))
+    (T . ((7 2 0 0) (2 6 2 0) (2 7 0 0) (2 3 2 0)))
+    (Z . ((12 6 0 0) (2 6 4 0) (12 6 0 0) (2 6 4 0)))))
 
 (define (random-tetromino-type)
   (car (list-ref tetr-states (random (1- (length tetr-states))))))
@@ -39,7 +37,7 @@
   (state tetromino-state set-tetromino-state!))
 
 (define (new-tetromino type)
-  (make-tetromino type '(0 0) 0))
+  (make-tetromino type '(3 0) 0))
 
 (define (tetromino-translate t offset rotate)
   "return a new translated tetromino t by offset"
@@ -325,18 +323,20 @@ starting at the position (x-off, y-off)."
               (last-now (make-time time-utc 0 0))
               (tick-freq 1000))
      (begin
+       (define moved #t)
        (when (<= tick-freq
                  (time->milliseconds (time-difference now last-now)))
-         (let ((moved (game-try-move! game 'down)))
-           (cond
-            ;; tetromino hit floor and is stuck at the top
-            ((and (not moved)
-                  (<= (tetromino-y (game-state-current-tetr game)) 0))
-             (end-game game))
-            ;; tetromino hit the floor
-            ((not moved) (game-lock-tetr! game))))
-         (set! last-now now))
+           (set! moved (game-try-move! game 'down))
+           (set! last-now now))
 
+       (cond
+        ;; tetromino hit floor and is stuck at the top
+        ((and (not moved)
+              (eq? (tetromino-y (game-state-current-tetr game)) 0)
+              (end-game game)))
+        ;; tetromino hit the floor
+        ((not moved) (game-lock-tetr! game)))
+       
        (match (getch stdscr)
          (#\q (end-game game))
          (#\space
