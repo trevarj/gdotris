@@ -15,11 +15,11 @@
 (define cell-width 2)
 (define cell-height 4)
 
+;; tetromino states for each type, where each state is represented
+;; as a list of integers that will be converted into a 4x4 grid.
+;; if you write the numbers as 4-bit binary numbers, you can see that they
+;; draw the tetromino shape.
 (define tetr-states
-  "tetromino states for each type, where each state is represented
-as a list of integers that will be converted into a 4x4 grid.
-if you write the numbers as 4-bit binary numbers, you can see that they
-draw the tetromino shape."
   '((I . ((2 2 2 2) (0 15 0 0) (2 2 2 2) (0 15 0 0)))
     (J . ((0 0 7 1) (0 1 1 3) (0 0 4 7) (0 6 4 4)))
     (L . ((0 0 14 8) (0 12 4 4) (0 0 2 14) (0 4 4 6)))
@@ -70,10 +70,6 @@ draw the tetromino shape."
     (list->array 2 (map (lambda (a) (integer->list a 4)) p))))
 
 (define (tetromino-for-each-dot tetr expr)
-  "run expr on each iteration over a tetromino's layout,
-where expr takes (x y val). when expr evaluates to #f it
-is like an escape hatch to the iteration. when the loop completes
-it returns #t."
   (match-let (((tx ty) (tetromino-position tetr))
               (tvec (tetromino->array tetr)))
     (let loop ((i 0)
@@ -222,6 +218,13 @@ starting at the position (x-off, y-off)."
                         (grid-cell-at-pos array j i)))
                #:x (+ x x-off)
                #:y (+ y y-off)))))))
+
+(define (draw-held-tetr state x y)
+  (let ((held (game-state-held-tetr-type state)))
+    (draw-array (if held
+                    (tetromino->array (new-tetromino held))
+                    (make-array #f 4 4))
+                x y)))
                             
 (define (game-state-draw state)
   (let ((grid (game-state-grid state))
@@ -229,6 +232,7 @@ starting at the position (x-off, y-off)."
     (grid-write-tetrmomino! grid tetr)
     (draw-array grid grid-x grid-y)
     (grid-remove-tetrmomino! grid tetr)
+    (draw-held-tetr state 8 1)
     (refresh stdscr)))
 
 (define* (game-try-move! state dir #:optional rotate)
