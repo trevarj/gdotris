@@ -1,6 +1,7 @@
-#!/usr/bin/env -S guile --listen=7777 -e main -s
+#!/usr/bin/env -S GUILE_WARN_DEPRECATED=no guile --listen=7777 -e main -s
 !#
-(use-modules (ice-9 match)
+(use-modules (ice-9 format)
+             (ice-9 match)
              (ncurses curses)
              (srfi srfi-9)
              (srfi srfi-19)
@@ -127,7 +128,8 @@
    current-tetr
    next-tetr-type
    held-tetr-type
-   score)
+   score
+   lines-cleared)
   game-state?
   (grid game-state-grid set-game-state-grid!)
   (current-tetr
@@ -139,15 +141,15 @@
   (held-tetr-type
    game-state-held-tetr-type
    set-game-state-held-tetr-type!)
-  (score game-state-score set-game-state-score!))
+  (score game-state-score set-game-state-score!)
+  (lines-cleared game-state-lines-cleared set-game-state-lines-cleared!))
 
 (define (new-game-state)
   (make-game-state
    (make-typed-array 'b #f grid-height grid-width)
    (new-tetromino (random-tetromino-type))
    (random-tetromino-type)
-   #f
-   0))
+   #f 0 0)) 
    
 (define braille-offset #x2800)
 
@@ -197,8 +199,9 @@ shift the previous rows down."
          ;; clear out the first row
          (else (array-cell-set! grid
                            (make-array #f 10)
-                           start-row)))))
-     (loop (1+ cleared) (1- row)))
+                           start-row))))
+      (set! cleared (1+ cleared)))
+     (loop cleared (1- row)))
     (else cleared))))
         
 (define (draw-array array x-off y-off)
@@ -257,9 +260,13 @@ starting at the position (x-off, y-off)."
   (game-new-tetr! state))
 
 (define (game-drop-tetr! state)
-  "drop the piece and lock it in"
-  (while (game-try-move! state 'down))
-  (game-lock-tetr! state))
+  "drop the piece and lock it in. returns drop distance."
+  (let loop ((lines 0))
+    (cond
+     ((game-try-move! state 'down)
+      (loop (1+ lines)))
+     (else (game-lock-tetr! state)    
+           lines))))
 
 (define (game-hold-or-recall-tetr! state)
   (let ((held (game-state-held-tetr-type state)))
@@ -292,8 +299,10 @@ starting at the position (x-off, y-off)."
     (make-time time-duration nanos seconds)))
 
 (define (end-game state)
-  ;; TODO: print score and stuff
   (endwin)
+  (format #t "GAME OVER! You scored ~:d and cleared ~:d lines!\n\r"
+          (game-state-score state)
+          (game-state-lines-cleared state))
   (exit 0))
 
 (define stdscr (initscr))
@@ -336,11 +345,13 @@ starting at the position (x-off, y-off)."
               (end-game game)))
         ;; tetromino hit the floor
         ((not moved) (game-lock-tetr! game)))
+
+       (define drop-multiplier 1)
        
        (match (getch stdscr)
          (#\q (end-game game))
          (#\space
-          (game-drop-tetr! game))
+          (set! drop-multiplier (game-drop-tetr! game)))
          (#\c
           (game-hold-or-recall-tetr! game))
          ((or 259 #\w) ; KEY_UP or w
@@ -355,8 +366,16 @@ starting at the position (x-off, y-off)."
           (set! game (new-game-state)))
          (_ #f))
 
-       ;; TODO: calculate score from cleared lines
-       (grid-clear-lines (game-state-grid game))
+       (let ((cleared (grid-clear-lines (game-state-grid game))))
+        (when (> cleared 0)
+          (set-game-state-score!
+           game (+ (game-state-score game)
+                   (* 100
+                      cleared cleared
+                      drop-multiplier)))
+          (set-game-state-lines-cleared!
+           game
+           (+ cleared (game-state-lines-cleared game)))))
       
        (game-state-draw game)
        (loop game (current-time) last-now tick-freq)))))
