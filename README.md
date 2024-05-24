@@ -34,6 +34,11 @@ TBA
 
 ## How To Play
 
+Simply run the script using:
+```sh
+$ ./gdotris.scm
+```
+
 ### Controls
 
 Key                  | Description
