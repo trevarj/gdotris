@@ -179,7 +179,7 @@
 (define (grid-remove-tetrmomino! grid tetr)
   (tetromino-overlay grid tetr (lambda (a b) (not (eq? a b)))))
 
-(define (grid-clear-lines grid)
+(define (grid-clear-lines! grid)
   "iterate over grid rows backwards and check if they are filled. if filled,
 shift the previous rows down."
   (define (row-filled? row)
@@ -366,7 +366,7 @@ starting at the position (x-off, y-off)."
           (set! game (new-game-state)))
          (_ #f))
 
-       (let ((cleared (grid-clear-lines (game-state-grid game))))
+       (let ((cleared (grid-clear-lines! (game-state-grid game))))
         (when (> cleared 0)
           (set-game-state-score!
            game (+ (game-state-score game)
@@ -378,4 +378,5 @@ starting at the position (x-off, y-off)."
            (+ cleared (game-state-lines-cleared game)))))
       
        (game-state-draw game)
-       (loop game (current-time) last-now tick-freq)))))
+       (loop game (current-time) last-now
+             (- 1000 (* 10 (game-state-lines-cleared game))))))))
