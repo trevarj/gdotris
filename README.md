@@ -30,7 +30,9 @@ $ sudo pacman -S guile guile-ncurses
 ```
 
 ### Guix
-TBA
+```sh
+guix shell -m manifest.scm -- ./gdotris.scm
+```
 
 ## How To Play
 
