@@ -20,7 +20,7 @@ see the original version.
   font's braille characters, like Kitty, and also can enlarge the font size,
   since the braille dots are tiny.
 - Guile 3.0.9
-- [guile-ncurses](https://www.gnu.org/software/guile-ncurses/)
+- [guile-ncurses](https://www.gnu.org/software/guile-ncurses/) **BUILT WITH NCURSESW SUPPORT (UNICODE)**
 
 ## Installation
 
