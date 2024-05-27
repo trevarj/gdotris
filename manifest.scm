@@ -1,6 +1,13 @@
 (use-modules (guix packages)
-             (gnu packages base)
+             (guix utils)
              (gnu packages guile)
              (gnu packages guile-xyz))
 
-(packages->manifest (list guile-3.0 guile-ncurses))
+(define-public guile-ncurses-unicode
+  (package
+    (inherit guile-ncurses)
+    (arguments
+     (substitute-keyword-arguments (package-arguments guile-ncurses)
+       ((#:configure-flags _) #~(list "--with-gnu-filesystem-hierarchy"))))))
+    
+(packages->manifest (list guile-3.0 guile-ncurses-unicode))
