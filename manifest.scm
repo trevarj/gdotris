@@ -10,4 +10,7 @@
      (substitute-keyword-arguments (package-arguments guile-ncurses)
        ((#:configure-flags _) #~(list "--with-gnu-filesystem-hierarchy"))))))
     
-(packages->manifest (list guile-3.0 guile-ncurses-unicode))
+(packages->manifest (list
+                     glibc-locales
+                     guile-3.0
+                     guile-ncurses-unicode))
